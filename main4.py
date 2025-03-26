@@ -5,7 +5,22 @@ from accession_retrieval4 import get_accessions, extract_sequence, get_fasta_met
 from get_alphafold_data4 import fetch_alphafold_pdb, save_pdb_file
 from get_secondary_struct4 import run_phipsi, run_define2, parse_define2_output, display_horizontal_output
 
-def save_to_csv(accession, primary_sequence, secondary_structure, output_file="protein_structures.csv"):
+def check_existing_sequence(sequence, dataset_file="protein_structures_3500.csv"):
+    """
+    Checks if a given sequence exists in the dataset and returns the corresponding secondary structure.
+    """
+    if not os.path.isfile(dataset_file):
+        return None
+    
+    with open(dataset_file, mode="r") as csvfile:
+        reader = csv.DictReader(csvfile)
+        for row in reader:
+            if row["Primary Sequence"] == sequence:
+                print("✅ Sequence found in dataset! Returning existing secondary structure.")
+                return row["Secondary Structure"]
+    return None
+
+def save_to_csv(accession, primary_sequence, secondary_structure, output_file="protein_structures_3500.csv"):
     """
     Saves the accession number, primary sequence, and secondary structure labels to a CSV file.
     """
@@ -18,24 +33,40 @@ def save_to_csv(accession, primary_sequence, secondary_structure, output_file="p
     print(f"Data saved to {output_file}")
 
 def main():
-    option = input("Choose an option:\n1. Input a FASTA file\n2. Input a protein sequence directly\nEnter 1 or 2: ")
-    
-    if option == "1":
-        fasta_file = input("Enter the path to your FASTA file: ")
+    if len(sys.argv) == 2:
+        fasta_file = sys.argv[1]
+        if not os.path.isfile(fasta_file):
+            print(f"Error: File '{fasta_file}' not found.")
+            sys.exit(1)
         sequence = extract_sequence(fasta_file)
         accession_number, gene_name = get_fasta_metadata(fasta_file)
-    elif option == "2":
-        sequence = input("Enter your protein sequence: ").strip()
-        if not sequence:
-            print("Error: No sequence provided.")
-            sys.exit(1)
-        accession_number, gene_name = None, None
-        accessions = get_accession_by_sequence(sequence)
-        if accessions:
-            accession_number = accessions[0]
     else:
-        print("Invalid option. Exiting.")
-        sys.exit(1)
+        option = input("Choose an option:\n1. Input a FASTA file\n2. Input a protein sequence directly\nEnter 1 or 2: ")
+        if option == "1":
+            fasta_file = input("Enter the path to your FASTA file: ")
+            if not os.path.isfile(fasta_file):
+                print(f"Error: File '{fasta_file}' not found.")
+                sys.exit(1)
+            sequence = extract_sequence(fasta_file)
+            accession_number, gene_name = get_fasta_metadata(fasta_file)
+        elif option == "2":
+            sequence = input("Enter your protein sequence: ").strip()
+            if not sequence:
+                print("Error: No sequence provided.")
+                sys.exit(1)
+            accession_number, gene_name = None, None
+            accessions = get_accession_by_sequence(sequence)
+            if accessions:
+                accession_number = accessions[0]
+        else:
+            print("Invalid option. Exiting.")
+            sys.exit(1)
+    
+    # Check if the secondary structure is already known
+    known_secondary_structure = check_existing_sequence(sequence)
+    if known_secondary_structure:
+        print("Secondary Structure:", known_secondary_structure)
+        return
     
     if not accession_number:
         print("Error: No accession number found.")
@@ -75,4 +106,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-

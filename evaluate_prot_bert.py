@@ -1,5 +1,6 @@
 import os
 import torch
+import numpy as np
 from transformers import AutoModelForTokenClassification, AutoTokenizer
 from sklearn.metrics import accuracy_score, classification_report, confusion_matrix
 import seaborn as sns
@@ -23,7 +24,7 @@ print("✅ Fine-tuned model loaded successfully!")
 # ✅ Load test dataset
 test_inputs, test_labels = torch.load("test_data.pt")
 
-# Define custom dataset class
+# Define dataset class
 class ProteinDataset(Dataset):
     def __init__(self, inputs, labels):
         self.inputs = inputs
@@ -40,8 +41,9 @@ class ProteinDataset(Dataset):
 # Create test DataLoader
 test_dataset = ProteinDataset(test_inputs, test_labels)
 test_loader = DataLoader(test_dataset, batch_size=8, shuffle=False)
+num_residues = sum(len(label) for label in test_labels)
 
-print(f"✅ Loaded {len(test_inputs)} test samples.")
+print(f"✅ Loaded {len(test_inputs)} test samples and {num_residues} residues (with sliding windows).")
 
 # ✅ Evaluate the Model
 all_preds = []
@@ -65,17 +67,29 @@ with torch.no_grad():
 valid_preds = [p for p, l in zip(all_preds, all_labels) if l != -100]
 valid_labels = [l for l in all_labels if l != -100]
 
+# ✅ Group predictions dynamically based on test set boundaries
+protein_lengths = [len(label) for label in test_labels]  # Get true segment sizes
+merged_preds = []
+merged_labels = []
+
+start_idx = 0
+for length in protein_lengths:
+    end_idx = start_idx + length
+    merged_preds.extend(valid_preds[start_idx:end_idx])
+    merged_labels.extend(valid_labels[start_idx:end_idx])
+    start_idx = end_idx
+
 # ✅ Compute Accuracy
-accuracy = accuracy_score(valid_labels, valid_preds)
+accuracy = accuracy_score(merged_labels, merged_preds)
 print(f"✅ Test Accuracy: {accuracy:.4f}")
 
 # ✅ Generate Classification Report
 label_names = ["H (Helix)", "B (Beta-Sheet)", "C (Coil)"]
 print("\nClassification Report:")
-print(classification_report(valid_labels, valid_preds, target_names=label_names))
+print(classification_report(merged_labels, merged_preds, target_names=label_names, digits=4))
 
 # ✅ Compute and Plot Confusion Matrix
-conf_matrix = confusion_matrix(valid_labels, valid_preds)
+conf_matrix = confusion_matrix(merged_labels, merged_preds)
 plt.figure(figsize=(5, 4))
 sns.heatmap(conf_matrix, annot=True, fmt="d", cmap="Blues", xticklabels=label_names, yticklabels=label_names)
 plt.xlabel("Predicted")

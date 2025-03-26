@@ -1,13 +1,17 @@
 import torch
 import torch.nn as nn
 import torch.optim as optim
+import numpy as np
 from transformers import AutoModelForTokenClassification, AutoTokenizer
+from sklearn.metrics import accuracy_score
 from torch.utils.data import DataLoader, Dataset
+from torch.nn.utils.rnn import pad_sequence
 
-# ✅ Load preprocessed dataset
-train_inputs, train_labels = torch.load("train_data.pt")
+# ✅ Load preprocessed dataset (with sliding window applied)
+train_inputs, train_labels = torch.load("train.pt")
+val_inputs, val_labels = torch.load("validation.pt")  # Load validation data
 
-# Define a dataset class
+# Define dataset class
 class ProteinDataset(Dataset):
     def __init__(self, inputs, labels):
         self.inputs = inputs
@@ -21,11 +25,15 @@ class ProteinDataset(Dataset):
         labels = self.labels[idx]
         return inputs, labels
 
-# Create DataLoader
+# Create DataLoader with correct batching
 train_dataset = ProteinDataset(train_inputs, train_labels)
-train_loader = DataLoader(train_dataset, batch_size=2, shuffle=True)
+train_loader = DataLoader(train_dataset, batch_size=8, shuffle=True)
+num_residues = sum(len(label) for label in train_labels)
+val_dataset = ProteinDataset(val_inputs, val_labels)
+val_loader = DataLoader(val_dataset, batch_size=8, shuffle=False)
 
-print(f"✅ Loaded {len(train_inputs)} training samples.")
+
+print(f"✅ Loaded {len(train_inputs)} training samples and {num_residues} labels (with sliding windows).")
 
 # ✅ Load ProtBERT model for fine-tuning
 model_name = "Rostlab/prot_bert"
@@ -60,6 +68,38 @@ for epoch in range(num_epochs):
         total_loss += loss.item()
 
     print(f"Epoch [{epoch+1}/{num_epochs}], Loss: {total_loss / len(train_loader):.4f}")
+    
+    
+    model.eval()
+    val_preds = []
+    val_labels_flat = []
+    
+    with torch.no_grad():
+        for batch in val_loader:
+            inputs, labels = batch
+            inputs = {key: val.to(device) for key, val in inputs.items()}
+            labels = labels.to(device)
+
+            outputs = model(**inputs).logits
+            _, preds = torch.max(outputs, 2)
+            
+            val_preds.extend(preds.cpu().numpy().flatten())
+            val_labels_flat.extend(labels.cpu().numpy().flatten())
+
+    # Remove ignored (-100) labels
+    # Remove ignored (-100) labels
+    valid_preds = [p for p, l in zip(val_preds, val_labels_flat) if l != -100]
+    valid_labels = [l for l in val_labels_flat if l != -100]
+
+    # Debugging output
+    print(f"Validation Samples: {len(val_labels_flat)}, Filtered Samples: {len(valid_labels)}")
+
+    if len(valid_labels) == 0 or len(valid_preds) == 0:
+        print("⚠️ Warning: No valid validation labels found. Skipping accuracy computation.")
+    else:
+        val_accuracy = accuracy_score(valid_labels, valid_preds)
+
+    print(f"Epoch [{epoch+1}/{num_epochs}], Validation Accuracy: {val_accuracy:.4f}")
 
 print("✅ Fine-tuning complete!")
 
