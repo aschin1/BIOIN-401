@@ -3,7 +3,7 @@ import torch
 import pandas as pd
 from transformers import AutoModelForTokenClassification, AutoTokenizer
 from Bio import SeqIO
-from accession_retrieval4 import get_fasta_metadata
+from accession_retrieval4 import get_fasta_metadata, get_accession_by_sequence
 from get_alphafold_data4 import fetch_alphafold_pdb, save_pdb_file
 from get_secondary_struct4 import run_phipsi, run_define2, parse_define2_output
 
@@ -103,9 +103,15 @@ def main():
     print("2. Upload a FASTA file")
     choice = input("\nChoose an option (1 or 2): ").strip()
 
+    accession = None
+
     if choice == "1":
         sequence = input("\nEnter your protein sequence: ").strip()
-        accession = None
+        accession, identity = get_accession_by_sequence(sequence, identity_threshold=95.0)
+        if accession:
+            print(f"\n✅ Found matching accession: {accession} ({identity:.2f}% identity)")
+        else:
+            print("\n⚠️ No UniProt accession found with ≥95% identity.")
     elif choice == "2":
         fasta_file = input("\nEnter the path to your FASTA file: ").strip()
         if not os.path.exists(fasta_file):
@@ -135,4 +141,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-

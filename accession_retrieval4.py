@@ -3,6 +3,8 @@ import sys
 import time
 import urllib.parse
 from Bio import SeqIO
+from Bio.Blast import NCBIWWW
+from Bio.Blast import NCBIXML
 
 def get_accessions(query, page_size=500):
     """Retrieves UniProt accessions from UniProtKB based on the given query."""
@@ -51,60 +53,30 @@ def get_fasta_metadata(fasta_file):
         print(f"Error reading FASTA file: {e}")
         sys.exit(1)
 
-def get_accession_by_sequence(sequence):
-    """
-    Submits a protein sequence to EBI's BLAST API to find the closest UniProtKB accession.
-    This function polls the API until a result is available.
-    """
-    blast_url = "https://www.ebi.ac.uk/Tools/services/rest/ncbiblast/run"
-    check_url = "https://www.ebi.ac.uk/Tools/services/rest/ncbiblast/status/"
-    result_url = "https://www.ebi.ac.uk/Tools/services/rest/ncbiblast/result/"
-    
-    # Parameters for BLAST search against UniProtKB
-    params = {
-        "email": "your-email@example.com",  # REQUIRED: Change this to your email
-        "program": "blastp",
-        "database": "uniprotkb",
-        "sequence": sequence
-    }
-    
-    # Submit the BLAST job
-    response = requests.post(blast_url, data=params)
-    
-    if response.status_code != 200:
-        print(f"Error: Failed to submit BLAST request (Status Code: {response.status_code})")
-        return None
+def get_accession_by_sequence(seq, identity_threshold=95.0):
+    print("Running BLAST against UniProtKB (SwissProt)...")
+    result_handle = NCBIWWW.qblast("blastp", "swissprot", seq)
 
-    job_id = response.text.strip()
-    print(f"BLAST Job ID: {job_id}")
+    blast_record = NCBIXML.read(result_handle)
 
-    # Polling to check the status of the job
-    for _ in range(15):  # Wait up to 45 seconds
-        status_response = requests.get(check_url + job_id)
-        if status_response.text.strip() == "FINISHED":
-            break
-        print("Waiting for BLAST results...")
-        time.sleep(3)
+    if not blast_record.alignments:
+        print("❌ No matches found.")
+        return None, None
 
-    # Fetch the result if job is finished
-    result_response = requests.get(result_url + job_id + "/xml")
-    
-    if result_response.status_code != 200:
-        print(f"Error: Failed to retrieve BLAST results (Status Code: {result_response.status_code})")
-        return None
+    first_alignment = blast_record.alignments[0]
+    best_hsp = first_alignment.hsps[0]
 
-    # Extract the best UniProt accession from the BLAST XML output
-    import xml.etree.ElementTree as ET
-    root = ET.fromstring(result_response.text)
-    
-    # Look for hits in the BLAST XML output
-    for hit in root.findall(".//Hit"):
-        accession = hit.find("Hit_accession").text
-        if accession:
-            return accession  # Return the first (best) hit
+    accession = first_alignment.accession
+    identity = (best_hsp.identities / best_hsp.align_length) * 100
 
-    print("Error: No matching accession found for the given sequence.")
-    return None
+    print(f"🔍 Best hit: {accession} ({identity:.2f}% identity)")
+
+    if identity >= identity_threshold:
+        print(f"✅ Identity above threshold ({identity_threshold}%) — returning accession.")
+        return accession, identity
+    else:
+        print(f"❌ Identity {identity:.2f}% is below threshold ({identity_threshold}%).")
+        return None, None
 
 if __name__ == "__main__":
     option = input("Choose an option:\n1. Input a FASTA file\n2. Input a protein sequence directly\nEnter 1 or 2: ")
@@ -113,22 +85,23 @@ if __name__ == "__main__":
         fasta_file = input("Enter the path to your FASTA file: ")
         sequence = extract_sequence(fasta_file)
         accession_number, gene_name = get_fasta_metadata(fasta_file)
+        query = f"accession:{accession_number}" if accession_number else f"sequence:{sequence}"
+        accessions = get_accessions(query)
+
     elif option == "2":
         sequence = input("Enter your protein sequence: ").strip()
         accession_number, gene_name = None, None
         if not sequence:
             print("Error: No sequence provided.")
             sys.exit(1)
-        accessions = get_accession_by_sequence(sequence)
+        accession_number, identity = get_accession_by_sequence(sequence, identity_threshold=95.0)
+        accessions = [accession_number] if accession_number else []
+
     else:
         print("Invalid option. Exiting.")
         sys.exit(1)
 
-    if option == "1":
-        query = f"accession:{accession_number}" if accession_number else f"sequence:{sequence}"
-        accessions = get_accessions(query)
-
     if accessions:
-        print("Found accessions:", accessions)
+        print("✅ Found accessions:", accessions)
     else:
-        print("No accessions found for the given query.")
+        print("❌ No accessions found for the given query.")

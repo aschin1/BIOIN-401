@@ -3,9 +3,9 @@ import os
 import csv
 from accession_retrieval4 import get_accessions, extract_sequence, get_fasta_metadata, get_accession_by_sequence
 from get_alphafold_data4 import fetch_alphafold_pdb, save_pdb_file
-from get_secondary_struct4 import run_phipsi, run_define2, parse_define2_output, display_horizontal_output
+from get_secondary_struct_dssp import get_dssp_secondary_structure, display_horizontal_output
 
-def check_existing_sequence(sequence, dataset_file="protein_structures_rand_5000.csv"):
+def check_existing_sequence(sequence, dataset_file="protein_structures_dssp_rand_1000.csv"):
     """
     Checks if a given sequence exists in the dataset and returns the corresponding secondary structure.
     """
@@ -20,7 +20,7 @@ def check_existing_sequence(sequence, dataset_file="protein_structures_rand_5000
                 return row["Secondary Structure"]
     return None
 
-def save_to_csv(accession, primary_sequence, secondary_structure, output_file="protein_structures_rand_5000.csv"):
+def save_to_csv(accession, primary_sequence, secondary_structure, output_file="protein_structures_dssp_rand_1000.csv"):
     """
     Saves the accession number, primary sequence, and secondary structure labels to a CSV file.
     """
@@ -30,7 +30,7 @@ def save_to_csv(accession, primary_sequence, secondary_structure, output_file="p
         if not file_exists:
             writer.writerow(["Accession Number", "Primary Sequence", "Secondary Structure"])
         writer.writerow([accession, primary_sequence, secondary_structure])
-    print(f"Data saved to {output_file}")
+    print(f"✅ Data saved to {output_file}")
 
 def main():
     if len(sys.argv) == 2:
@@ -82,20 +82,10 @@ def main():
     pdb_filename = os.path.join("pdb_files", f"{accession_number}.pdb")
     save_pdb_file(accession_number, pdb_data)
     
-    # Run phipsi and define2 to get secondary structure
-    phipsi_output = run_phipsi(pdb_filename)
-    if not phipsi_output:
-        print("Error: Phipsi execution failed.")
-        sys.exit(1)
-    
-    define2_output = run_define2(phipsi_output)
-    if not define2_output:
-        print("Error: Define2 execution failed.")
-        sys.exit(1)
-    
-    residues, sec_structure = parse_define2_output(define2_output)
+    # Run DSSP to get secondary structure
+    residues, sec_structure = get_dssp_secondary_structure(pdb_filename)
     if not residues or not sec_structure:
-        print("Error: No secondary structure data extracted.")
+        print("Error: DSSP failed to extract secondary structure.")
         sys.exit(1)
     
     # Display secondary structure output
