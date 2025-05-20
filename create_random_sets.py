@@ -3,10 +3,10 @@ import random
 import shutil
 
 # Directory containing the 572,000 FASTA files
-SOURCE_DIR = "primary_sequences"  # Change if your FASTA files are elsewhere
+SOURCE_DIR = "transmembrane_protein_sequences"  # Change if your FASTA files are elsewhere
 
 # Desired output sample sizes and corresponding output folders
-SAMPLE_SIZES = [50, 100, 500, 1000, 2000, 5000]
+SAMPLE_SIZES = [1000, 2000]
 
 def create_randomized_sets(source_dir, sample_sizes):
     # Get list of all FASTA files in source directory
@@ -18,7 +18,7 @@ def create_randomized_sets(source_dir, sample_sizes):
 
     for size in sample_sizes:
         sample = fasta_files[:size]
-        output_dir = f"fasta_subset_n{size}"
+        output_dir = f"transmembrane_subset_n{size}"
         os.makedirs(output_dir, exist_ok=True)
 
         for file_name in sample:
@@ -26,7 +26,7 @@ def create_randomized_sets(source_dir, sample_sizes):
             dest_path = os.path.join(output_dir, file_name)
             shutil.copy2(source_path, dest_path)
 
-        print(f"✅ Created folder '{output_dir}' with {size} randomized FASTA files.")
+        print(f"✅ Created folder '{output_dir}' with {size} randomized fasta files.")
 
 if __name__ == "__main__":
     create_randomized_sets(SOURCE_DIR, SAMPLE_SIZES)
